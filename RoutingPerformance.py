@@ -70,8 +70,8 @@ class send(object):
 
 		self.p={}
 		self.rate = rate
-
-		self.start(g, "SHP")
+		# self.enable(g, "LLP", ["A", "D", 0.88887])
+		self.start(g, "LLP")
 
 	def start(self, g, alg):
 		txt = open("workload.txt")
@@ -117,36 +117,55 @@ class send(object):
 					stop_t.remove(stop_t[0])
 					print ""
 
-		
-
 	def enable(self, g, alg, nodes):
 
 		s = solution(g, alg, nodes[0], nodes[1])
-		path = s.path
+		if alg=="LLP":
+			path = self.find_minLoad(g, s.paths)
+		else:
+			path = self.path_split(s.path)
 		# print "path for ", nodes, " = ", path
-		pathSplited = []
-		c=0
-		while c + 1 < len(path):
-			pathSplited.append((path[c], path[c+1]))
-			c += 1
-		print pathSplited
-		if self.path_valid(pathSplited):
+		if self.path_valid(path):
 			self.numsp += int(float(nodes[2])*self.rate)
-			for i in pathSplited:
+			for i in path:
 				if g.edge[i][0]:
 					if g.load[i] == g.edge[i][2]-1:
-						print "Blocking the path"
+						print "Blocking the path: ", i
 						g.edge[i][0] = False
 					g.load[i] += 1
-					print nodes[2]
-					self.p[(nodes[0], nodes[1])] = pathSplited
+					self.p[(nodes[0], nodes[1])] = path
+			print nodes[2]
 		else:
 			print "Blocked"
 			print nodes[2]
 			self.numbp += int(float(nodes[2])*self.rate)
 			return False
 
-		# print g.edge
+	def find_minLoad(self, g, paths):
+		minLoad=[]
+		min = 1
+		for i in paths:
+			print i
+			new = self.path_split(i)
+			m = []
+			for l in new:
+				m.append(float(g.load[l])/float(g.edge[l][2]))
+			m=sorted(m)
+			print m
+			if m[-1] <= min:
+				min=m[0]
+				minLoad=new
+			print ""
+		print minLoad
+		return minLoad
+
+	def path_split(self, path):
+		pathSplited = []
+		c=0
+		while c + 1 < len(path):
+			pathSplited.append((path[c], path[c+1]))
+			c += 1
+		return pathSplited
 
 	def path_valid(self, pathSplited):
 		det = 1
@@ -188,6 +207,9 @@ class solution(object):
 			self.path = self.SHP(g, src, dest)
 		elif alg == "SDP":
 			self.path = self.SDP(g, src, dest)
+		elif alg == "LLP":
+			self.paths = self.LLP(g, src, dest)
+			print self.paths
 
 	def SHP(self, g, src, dest):
 		D={}
@@ -254,8 +276,6 @@ class solution(object):
 
 		while len(unvisited) != 0: #while unvisited is not empty
 			# for unvisited nearby vertex
-			
-			
 			cur = self.get_min(unvisited, D)
 			q.remove(cur)
 			for v in self.maps[cur]:
@@ -283,7 +303,19 @@ class solution(object):
 		path.reverse()
 		return path
 
-	# def LLP(self):
+	def LLP(self, g, src, dest, path=[]):
+		path = path + [src]
+		if src == dest:
+			return [path]
+		# if not g.maps[src]:
+		#     return []
+		paths = []
+		for node in g.map[src]:
+			if node not in path:
+				newpaths = self.LLP(g, node, dest, path)
+				for newpath in newpaths:
+					paths.append(newpath)
+		return paths
 
 
 packetRate = 2
@@ -293,6 +325,6 @@ g.show()
 # g.activate_edge(("G", "H"))
 g.show()
 g.get_vertex()
-
-s = send(g, packetRate)
-s.show()
+s = send(g, 2)
+# s = send(g, packetRate)
+# s.show()
