@@ -1,16 +1,24 @@
-from time import time, sleep
+import time
 
-fo = open("workload.txt", "r")
-data = fo.read()
-fo.close()
 
-new = data.split('\r\n')
-a = 0
-i = new[0]
-start = time()
-print (float)i[0]
-while 1:
-	if i[0] == (time()-start):
-		print i[0], " passed\n"
-		a += 1
-		i = new[a]
+
+txt = open("workload.txt")
+
+content = txt.readlines()
+
+for i in range(len(content)):
+	content[i] = content[i].strip().split()
+
+
+
+org = time.time()
+
+c = 0 
+while c<len(content):
+	current = time.time()
+	if current-org >= float(content[c][0]):
+		print("now:", current-org)
+		c+=1
+
+
+
