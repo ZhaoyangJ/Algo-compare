@@ -65,8 +65,8 @@ class send(object):
 		self.percsp=0.00
 		self.numbp=self.ttlp-self.numsp
 		self.percbp=100-self.percsp
-		self.avghpc=0
-		self.avgpdpc=0
+		self.ttlhpc=0
+		self.ttlpdpc=0
 
 		self.p={}
 		self.rate = rate
@@ -124,6 +124,13 @@ class send(object):
 			path = self.find_minLoad(g, s.paths)
 		else:
 			path = self.path_split(s.path)
+			
+		self.ttlhpc += (len(path) + 1)
+		ppgd=0
+		for i in path: 
+			ppgd += g.edge[i][1]
+		self.ttlpdpc += ppgd
+
 		# print "path for ", nodes, " = ", path
 		if self.path_valid(path):
 			self.numsp += int(float(nodes[2])*self.rate)
@@ -193,8 +200,8 @@ class send(object):
 		print "percentage of successfully routed packets:", self.percsp
 		print "number of blocked packets: ", self.numbp
 		print "percentage of blocked packets: ", 100 - self.percsp
-		print "average number of hops per circuit: ", self.avghpc
-		print "average number of hops per circuit: ", self.avgpdpc
+		print "average number of hops per circuit: ", float(self.ttlhpc)/float(self.ttlrq)
+		print "average number of hops per circuit: ", float(self.ttlpdpc)/float(self.ttlrq)
 
 		
 
@@ -325,6 +332,5 @@ g.show()
 # g.activate_edge(("G", "H"))
 g.show()
 g.get_vertex()
-s = send(g, 2)
-# s = send(g, packetRate)
-# s.show()
+s = send(g, packetRate)
+s.show()
