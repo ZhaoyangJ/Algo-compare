@@ -20,7 +20,7 @@ import sys
 # packetRate = int(sys.argv[5])
 
 network = "CIRCUIT"
-alg = "LLP"
+alg = "SDP"
 topology = "topology.txt"
 workload = "workload.txt"
 packetRate = 1
@@ -123,16 +123,15 @@ class routing(object):
 		while len(start_t) != 0 or len(stop_t) != 0:
 			current = time()
 			if len(start_t) != 0:
-				if (current-org) >= start_t[0]/float(50):
+				if (current-org) >= start_t[0]/float(100):
 					# print "enable: ", S[start_t[0]], " at ", current-org
 					if self.enable(g, alg, S[start_t[0]], start_t[0] + float(S[start_t[0]][2])) == False:
 						stop_t.remove(start_t[0] + float(S[start_t[0]][2]))
-						print g.load
-						print "Removed"
+						# print "Removed"
 					start_t.remove(start_t[0])
 					# print " "
 			if len(stop_t) != 0:
-				if current-org >= stop_t[0]/float(50):
+				if current-org >= stop_t[0]/float(100):
 					# print "disable:", T[stop_t[0]], " at ", current-org
 					self.disable(g, stop_t[0])
 					stop_t.remove(stop_t[0])
@@ -141,14 +140,10 @@ class routing(object):
 	def enable(self, g, alg, nodes, t):
 
 		s = solution(g, alg, nodes[0], nodes[1])
-		if alg=="LLP":
-			path = self.find_minLoad(g, s.paths)
-		else:
-			path = self.path_split(s.path)
-
-		# print path
-
-		# print self.p
+		# if alg=="LLP":
+		# 	path = self.find_minLoad(g, s.paths)
+		# else:
+		path = self.path_split(s.path)
 
 		if self.path_valid(path):
 			self.ttlsrq+=1
@@ -162,7 +157,7 @@ class routing(object):
 			for i in path:
 				# if g.edge[i][0]:
 				if g.load[i][0] == g.edge[i][2]-1:
-					print "Blocking the path: ", i, " lasts ", nodes[2]
+					# print "Blocking the path: ", i, " lasts ", nodes[2]
 					g.edge[i][0] = False
 				g.load[i][0] += 1
 			self.p[round(t,6)] = path 	
@@ -190,9 +185,9 @@ class routing(object):
 			for l in new:
 				m.append(float(g.load[l][0])/float(g.edge[l][2]))
 			m=sorted(m)
-			# print m 
+			# print m[-1]
 			if m[-1] <= min:
-				min=m[0]
+				min=m[-1]
 				minLoad=new
 			# print ""
 		# print "minLoad = ", minLoad
@@ -212,10 +207,11 @@ class routing(object):
 
 		path = self.p[round(t,6)]
 		for i in path:
+			g.load[i][0] -= 1
 			if g.load[i][0] < g.edge[i][2]:
 				g.edge[i][0] = True
 				# print "reactivated : ", i
-			g.load[i][0] -= 1
+			
 
 		# print g.edge
 
@@ -237,14 +233,9 @@ class solution(object):
 	def __init__(self, g, alg, src, dest):
 		self.maps = g.map
 		self.edge = g.edge
-		if alg == "SHP":
-			self.path = self.SHP(g, src, dest)
-		elif alg == "SDP":
-			self.path = self.SDP(g, src, dest)
-		elif alg == "LLP":
-			self.paths = self.LLP(g, src, dest)
+		self.path = self.dijkstra(g, src, dest, alg)
 
-	def SHP(self, g, src, dest):
+	def dijkstra(self, g, src, dest, alg):
 		D={}
 		Pred = {}
 		visited = []
@@ -258,10 +249,17 @@ class solution(object):
 		cur = self.get_min(unvisited, D)
 		while len(unvisited) != 0 and cur != dest:
 			# q.remove(cur)
-			for v in self.maps[cur]:
+			for v in g.map[cur]:
 				if v in visited:
 					continue
-				temp=D[cur]+1#<- 1 could be replaced by weight
+				if alg == "SHP":
+					temp=D[cur]+1
+				elif alg == "SDP":
+					temp=D[cur] + g.edge[(cur, v)][1]
+				elif alg == "LLP":
+					temp = float(g.load[(cur, v)][0])/float(g.edge[(cur, v)][2])
+					if temp < D[cur]:
+						temp = D[cur]
 				if temp < D[v]:
 					D[v] = temp
 					Pred[v]=cur
@@ -281,6 +279,9 @@ class solution(object):
 
 		path.reverse()
 		return path
+
+	# def SHP(self, g, src, dest):
+	# 	return
 				
 	def get_min(self, l, D):
 		min = D[l[0]]
@@ -290,62 +291,6 @@ class solution(object):
 				min=D[i]
 				value=i
 		return value
-
-	def SDP(self, g, src, dest):
-
-		D={}
-		Pred = {}
-		visited = []
-		unvisited=g.get_vertex()
-
-		for i in unvisited:
-			D[i]=999
-		D[src]=0
-		Pred[src] = None
-		q = [src]
-		cur = self.get_min(unvisited, D)
-		while len(unvisited) != 0 and cur != dest: #while unvisited is not empty
-			# for unvisited nearby vertex
-			# q.remove(cur)
-			for v in self.maps[cur]:
-				if v in visited:
-					continue
-				temp=D[cur] + g.edge[(cur, v)][1]#<- 1 could be replaced by weight
-				if temp < D[v]:
-					D[v] = temp
-					Pred[v]=cur
-					# if v not in q:
-					# 	q.append(v)
-
-			unvisited.remove(cur)
-			visited.append(cur)
-			cur = self.get_min(unvisited, D)
-			# print "uv = ", unvisited
-			# print "v = ", visited
-			# print "q = ", q
-
-		path = []
-		v = dest
-		while v != None:
-			path.append(v)
-			v = Pred[v]
-
-		path.reverse()
-		return path
-
-	def LLP(self, g, src, dest, path=[]):
-		path = path + [src]
-		if src == dest:
-			return [path]
-		# if not g.maps[src]:
-		#     return []
-		paths = []
-		for node in g.map[src]:
-			if node not in path:
-				newpaths = self.LLP(g, node, dest, path)
-				for newpath in newpaths:
-					paths.append(newpath)
-		return paths
 
 g = Graph("topology.txt")
 g.show()
