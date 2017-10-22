@@ -7,7 +7,23 @@ from sets import Set
 from collections import defaultdict
 from threading import Thread
 from time import time
-import Queue
+import sys
+
+# if (len(sys.argv) != 6):
+# 	print "Invalid input"
+# 	exit(1)
+
+# network = sys.argv[1]
+# alg = sys.argv[2]
+# topology = sys.argv[3]
+# workload = sys.argv[4]
+# packetRate = int(sys.argv[5])
+
+network = "CIRCUIT"
+alg = "SHP"
+topology = "topology.txt"
+workload = "workload.txt"
+packetRate = 2
 
 class Graph(object):
 	def __init__(self,filename):
@@ -47,6 +63,8 @@ class Graph(object):
 		print "load:\n", self.load
 		print ""
 		print "maps: \n",self.map
+		print ""
+		print ""
 
 	def get_vertex(self):
 		nodes = self.map.keys()
@@ -56,9 +74,9 @@ class Graph(object):
 	# 	self.edge[tup] = (True,) + self.edge[tup][1:]
 	# 	self.edge[tup[::-1]] = (True,) + self.edge[tup[::-1]][1:]
 
-class send(object):
+class routing(object):
 
-	def __init__(self, g, rate):
+	def __init__(self, g, workload, alg, rate):
 		self.ttlrq=0
 		self.ttlp=0
 		self.numsp=0
@@ -68,16 +86,17 @@ class send(object):
 		self.ttlhpc=0
 		self.ttlpdpc=0
 
-		self.p={}
+		self.p={} # p[finish time] -> paths need to be reactivated
 		self.rate = rate
-		# self.enable(g, "LLP", ["A", "D", 0.88887])
-		self.start(g, "LLP")
+		self.start(g, workload, alg)
 
-	def start(self, g, alg):
-		txt = open("workload.txt")
+	def start(self, g, workload, alg):
+		txt = open(workload)
 		content = txt.readlines()
-		S={}
-		T={}
+		txt.close()
+
+		S={} # S[start_time] -> [src, dest, duration]
+		T={} # T[stop_time] -> [src, dest]
 		start_t=[]
 		stop_t=[]
 		self.ttlrq=len(content)
@@ -97,73 +116,72 @@ class send(object):
 
 		stop_t = sorted(stop_t)
 
-		print start_t[0]
-		print stop_t
-
 		org = time()
 		while len(start_t) != 0 or len(stop_t) != 0:
 			current = time()
 			if len(start_t) != 0:
 				if (current-org) >= start_t[0]:
-					print("enable: ", S[start_t[0]], current-org)
-					if self.enable(g, alg, S[start_t[0]]) == False:
-						stop_t.remove(float(start_t[0]) + float(S[start_t[0]][2]))
+					print "enable: ", S[start_t[0]], " at ", current-org
+					if self.enable(g, alg, S[start_t[0]], start_t[0] + float(S[start_t[0]][2])) == False:
+						stop_t.remove(start_t[0] + float(S[start_t[0]][2]))
+						print "Removed"
 					start_t.remove(start_t[0])
 					print " "
 			if len(stop_t) != 0:
 				if current-org >= stop_t[0]:
-					print("disable:", T[stop_t[0]], current-org)
-					self.disable(g, T[stop_t[0]])
+					print "disable:", T[stop_t[0]], " at ", current-org
+					self.disable(g, stop_t[0])
 					stop_t.remove(stop_t[0])
 					print ""
 
-	def enable(self, g, alg, nodes):
+	def enable(self, g, alg, nodes, t):
 
 		s = solution(g, alg, nodes[0], nodes[1])
 		if alg=="LLP":
 			path = self.find_minLoad(g, s.paths)
 		else:
 			path = self.path_split(s.path)
-			
-		self.ttlhpc += (len(path) + 1)
-		ppgd=0
-		for i in path: 
-			ppgd += g.edge[i][1]
-		self.ttlpdpc += ppgd
 
-		# print "path for ", nodes, " = ", path
+		# print self.p
+
 		if self.path_valid(path):
+			self.ttlhpc += (len(path) + 1)
+			ppgd=0
+			for i in path: 
+				ppgd += g.edge[i][1]
+			self.ttlpdpc += ppgd
 			self.numsp += int(float(nodes[2])*self.rate)
+
 			for i in path:
 				if g.edge[i][0]:
 					if g.load[i] == g.edge[i][2]-1:
-						print "Blocking the path: ", i
+						print "Blocking the path: ", i, " lasts ", nodes[2]
 						g.edge[i][0] = False
 					g.load[i] += 1
-					self.p[(nodes[0], nodes[1])] = path
-			print nodes[2]
+			self.p[round(t,6)] = path 	
 		else:
 			print "Blocked"
-			print nodes[2]
 			self.numbp += int(float(nodes[2])*self.rate)
 			return False
 
 	def find_minLoad(self, g, paths):
 		minLoad=[]
 		min = 1
+		# print ""
+		# print "all possible paths:"
 		for i in paths:
-			print i
+			# print i
 			new = self.path_split(i)
 			m = []
 			for l in new:
 				m.append(float(g.load[l])/float(g.edge[l][2]))
 			m=sorted(m)
-			print m
+			# print m 
 			if m[-1] <= min:
 				min=m[0]
 				minLoad=new
-			print ""
-		print minLoad
+			# print ""
+		# print "minLoad = ", minLoad
 		return minLoad
 
 	def path_split(self, path):
@@ -181,14 +199,14 @@ class send(object):
 				det = 0
 		return det
 
-	def disable(self, g, nodes):
+	def disable(self, g, t):
 
-		path = self.p[(nodes[0], nodes[1])]
+		path = self.p[round(t,6)]
 		for i in path:
 			g.load[i] -= 1
 			if g.load[i] < g.edge[i][2]:
 				g.edge[i][0] = True
-				print "reactivated"
+				print "reactivated : ", i
 
 		# print g.edge
 
@@ -201,9 +219,7 @@ class send(object):
 		print "number of blocked packets: ", self.numbp
 		print "percentage of blocked packets: ", 100 - self.percsp
 		print "average number of hops per circuit: ", float(self.ttlhpc)/float(self.ttlrq)
-		print "average number of hops per circuit: ", float(self.ttlpdpc)/float(self.ttlrq)
-
-		
+		print "average cumulative propagation delay per circuit: ", float(self.ttlpdpc)/float(self.ttlrq)
 
 class solution(object):
 
@@ -216,7 +232,6 @@ class solution(object):
 			self.path = self.SDP(g, src, dest)
 		elif alg == "LLP":
 			self.paths = self.LLP(g, src, dest)
-			print self.paths
 
 	def SHP(self, g, src, dest):
 		D={}
@@ -230,9 +245,7 @@ class solution(object):
 		Pred[src] = None
 		q = [src]
 
-		while len(unvisited) != 0: #while unvisited is not empty
-			# for unvisited nearby vertex
-			#print "uv = ", unvisited
+		while len(unvisited) != 0:
 			
 			cur = self.get_min(unvisited, D)
 			q.remove(cur)
@@ -324,13 +337,9 @@ class solution(object):
 					paths.append(newpath)
 		return paths
 
-
-packetRate = 2
-
 g = Graph("topology.txt")
 g.show()
-# g.activate_edge(("G", "H"))
-g.show()
 g.get_vertex()
-s = send(g, packetRate)
-s.show()
+
+r = routing(g, workload, alg, packetRate)
+r.show()
