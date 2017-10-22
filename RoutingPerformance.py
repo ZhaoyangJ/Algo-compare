@@ -9,21 +9,21 @@ from threading import Thread
 from time import time
 import sys
 
-# if (len(sys.argv) != 6):
-# 	print "Invalid input"
-# 	exit(1)
+if (len(sys.argv) != 6):
+	print "Invalid input"
+	exit(1)
 
-# network = sys.argv[1]
-# alg = sys.argv[2]
-# topology = sys.argv[3]
-# workload = sys.argv[4]
-# packetRate = int(sys.argv[5])
+network = sys.argv[1]
+alg = sys.argv[2]
+topology = sys.argv[3]
+workload = sys.argv[4]
+packetRate = int(sys.argv[5])
 
-network = "CIRCUIT"
-alg = "SDP"
-topology = "topology.txt"
-workload = "workload.txt"
-packetRate = 1
+# network = "CIRCUIT"
+# alg = "SDP"
+# topology = "topology.txt"
+# workload = "workload.txt"
+# packetRate = 1
 
 class Graph(object):
 	def __init__(self,filename):
@@ -162,7 +162,7 @@ class routing(object):
 				g.load[i][0] += 1
 			self.p[round(t,6)] = path 	
 		else:
-			print "Blocked"
+			# print "Blocked"
 			self.numbp += int(float(nodes[2])*self.rate)
 			self.ttlbrq+=1
 			return False
@@ -292,7 +292,7 @@ class solution(object):
 				value=i
 		return value
 
-g = Graph("topology.txt")
+g = Graph(topology)
 g.show()
 g.get_vertex()
 
