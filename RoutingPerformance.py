@@ -20,10 +20,10 @@ import sys
 # packetRate = int(sys.argv[5])
 
 network = "CIRCUIT"
-alg = "SHP"
+alg = "LLP"
 topology = "topology.txt"
 workload = "workload.txt"
-packetRate = 2
+packetRate = 1
 
 class Graph(object):
 	def __init__(self,filename):
@@ -44,8 +44,9 @@ class Graph(object):
 			dest = [True, int(temp[2]), int(temp[3])]
 			d[src1] = dest
 			d[src2] = dest
-			self.load[src1] = 0
-			self.load[src2] = 0
+			a = [0]
+			self.load[src1] = a
+			self.load[src2] = a
 		return d
 
 	def init_map(self):
@@ -85,6 +86,8 @@ class routing(object):
 		self.percbp=100-self.percsp
 		self.ttlhpc=0
 		self.ttlpdpc=0
+		self.ttlsrq=0
+		self.ttlbrq=0
 
 		self.p={} # p[finish time] -> paths need to be reactivated
 		self.rate = rate
@@ -120,19 +123,20 @@ class routing(object):
 		while len(start_t) != 0 or len(stop_t) != 0:
 			current = time()
 			if len(start_t) != 0:
-				if (current-org) >= start_t[0]:
-					print "enable: ", S[start_t[0]], " at ", current-org
+				if (current-org) >= start_t[0]/float(50):
+					# print "enable: ", S[start_t[0]], " at ", current-org
 					if self.enable(g, alg, S[start_t[0]], start_t[0] + float(S[start_t[0]][2])) == False:
 						stop_t.remove(start_t[0] + float(S[start_t[0]][2]))
+						print g.load
 						print "Removed"
 					start_t.remove(start_t[0])
-					print " "
+					# print " "
 			if len(stop_t) != 0:
-				if current-org >= stop_t[0]:
-					print "disable:", T[stop_t[0]], " at ", current-org
+				if current-org >= stop_t[0]/float(50):
+					# print "disable:", T[stop_t[0]], " at ", current-org
 					self.disable(g, stop_t[0])
 					stop_t.remove(stop_t[0])
-					print ""
+					# print ""
 
 	def enable(self, g, alg, nodes, t):
 
@@ -142,10 +146,13 @@ class routing(object):
 		else:
 			path = self.path_split(s.path)
 
+		# print path
+
 		# print self.p
 
 		if self.path_valid(path):
-			self.ttlhpc += (len(path) + 1)
+			self.ttlsrq+=1
+			self.ttlhpc += (len(path))
 			ppgd=0
 			for i in path: 
 				ppgd += g.edge[i][1]
@@ -153,16 +160,23 @@ class routing(object):
 			self.numsp += int(float(nodes[2])*self.rate)
 
 			for i in path:
-				if g.edge[i][0]:
-					if g.load[i] == g.edge[i][2]-1:
-						print "Blocking the path: ", i, " lasts ", nodes[2]
-						g.edge[i][0] = False
-					g.load[i] += 1
+				# if g.edge[i][0]:
+				if g.load[i][0] == g.edge[i][2]-1:
+					print "Blocking the path: ", i, " lasts ", nodes[2]
+					g.edge[i][0] = False
+				g.load[i][0] += 1
 			self.p[round(t,6)] = path 	
 		else:
 			print "Blocked"
 			self.numbp += int(float(nodes[2])*self.rate)
+			self.ttlbrq+=1
 			return False
+
+	def path_valid(self, pathSplited):
+		for i in pathSplited:
+			if g.edge[i][0] == False:
+				return 0
+		return 1
 
 	def find_minLoad(self, g, paths):
 		minLoad=[]
@@ -174,7 +188,7 @@ class routing(object):
 			new = self.path_split(i)
 			m = []
 			for l in new:
-				m.append(float(g.load[l])/float(g.edge[l][2]))
+				m.append(float(g.load[l][0])/float(g.edge[l][2]))
 			m=sorted(m)
 			# print m 
 			if m[-1] <= min:
@@ -192,21 +206,16 @@ class routing(object):
 			c += 1
 		return pathSplited
 
-	def path_valid(self, pathSplited):
-		det = 1
-		for i in pathSplited:
-			if g.edge[i][0] == False:
-				det = 0
-		return det
+
 
 	def disable(self, g, t):
 
 		path = self.p[round(t,6)]
 		for i in path:
-			g.load[i] -= 1
-			if g.load[i] < g.edge[i][2]:
+			if g.load[i][0] < g.edge[i][2]:
 				g.edge[i][0] = True
-				print "reactivated : ", i
+				# print "reactivated : ", i
+			g.load[i][0] -= 1
 
 		# print g.edge
 
@@ -218,8 +227,10 @@ class routing(object):
 		print "percentage of successfully routed packets:", self.percsp
 		print "number of blocked packets: ", self.numbp
 		print "percentage of blocked packets: ", 100 - self.percsp
-		print "average number of hops per circuit: ", float(self.ttlhpc)/float(self.ttlrq)
-		print "average cumulative propagation delay per circuit: ", float(self.ttlpdpc)/float(self.ttlrq)
+		print "average number of hops per circuit: ", float(self.ttlhpc)/float(self.ttlsrq)
+		print "average cumulative propagation delay per circuit: ", float(self.ttlpdpc)/float(self.ttlsrq)
+		print "succesful request : ", self.ttlsrq
+		print "blocked request : ", self.ttlbrq
 
 class solution(object):
 
@@ -243,12 +254,10 @@ class solution(object):
 			D[i]=999
 		D[src]=0
 		Pred[src] = None
-		q = [src]
-
-		while len(unvisited) != 0:
-			
-			cur = self.get_min(unvisited, D)
-			q.remove(cur)
+		# q = [src]
+		cur = self.get_min(unvisited, D)
+		while len(unvisited) != 0 and cur != dest:
+			# q.remove(cur)
 			for v in self.maps[cur]:
 				if v in visited:
 					continue
@@ -256,10 +265,11 @@ class solution(object):
 				if temp < D[v]:
 					D[v] = temp
 					Pred[v]=cur
-					q.append(v)
+					# q.append(v)
 
 			unvisited.remove(cur)
 			visited.append(cur)
+			cur = self.get_min(unvisited, D)
 			# print "v = ", visited
 			# print "q = ", q
 
@@ -293,11 +303,10 @@ class solution(object):
 		D[src]=0
 		Pred[src] = None
 		q = [src]
-
-		while len(unvisited) != 0: #while unvisited is not empty
+		cur = self.get_min(unvisited, D)
+		while len(unvisited) != 0 and cur != dest: #while unvisited is not empty
 			# for unvisited nearby vertex
-			cur = self.get_min(unvisited, D)
-			q.remove(cur)
+			# q.remove(cur)
 			for v in self.maps[cur]:
 				if v in visited:
 					continue
@@ -305,11 +314,12 @@ class solution(object):
 				if temp < D[v]:
 					D[v] = temp
 					Pred[v]=cur
-					if v not in q:
-						q.append(v)
+					# if v not in q:
+					# 	q.append(v)
 
 			unvisited.remove(cur)
 			visited.append(cur)
+			cur = self.get_min(unvisited, D)
 			# print "uv = ", unvisited
 			# print "v = ", visited
 			# print "q = ", q
